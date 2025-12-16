@@ -1,6 +1,6 @@
 # Primeiro Passo
 
-Instale as dependências com:
+Acesse a pasta "todo-app-react-native-main", onde terá o package.json com as dependências, e instale-as com:
 
 ```bash
 npm install
