@@ -1,9 +1,9 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Button, Keyboard, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { FlatList, GestureHandlerRootView } from "react-native-gesture-handler";
 
-
+import { Alert } from "react-native";
 
 import { createTodo, createList, getAllTodos, getAllLists, getDBVersion, getSQLiteVersion, updateTodoStatus } from "@/lib/db";
 import { TodoItem, TodoList, uuid } from "@/lib/types";
@@ -12,7 +12,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import ReanimatedSwipeable, { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import Reanimated, { FadeIn, FadeOut, SharedValue, useAnimatedStyle } from "react-native-reanimated";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 // No componente RightAction, os parâmetros prog e drag são valores compartilhados (SharedValue) fornecidos pelo ReanimatedSwipeable:
 
@@ -147,67 +147,54 @@ function TodosFilter({ selectedValue, setFilter }: { selectedValue: FilterOption
   );
 }
 
-function AddTodoForm({ addTodoHandler, lists, selectedList}: {
-  lists: TodoList[];
-  addTodoHandler: (text: string, listId: string) => void;
-  selectedList: string | null;
-})  {
-  const [text, setText] = React.useState("");
-  const [listId, setListId] = useState<string | null>(null);
+function AddTodoForm({
+  onAddTodo,
+}: {
+  onAddTodo: (text: string) => void;
+}) {
+  const [text, setText] = useState("");
 
-useEffect(() => {
-  
-    if (selectedList && selectedList !== "all") {
-      setListId(selectedList);
-    }
-  }, [selectedList]);
-
-  if (lists.length === 0) {
-    return (
-      <Text style={{ padding: 20, color: "#888" }}>
-        Crie uma lista antes de adicionar tarefas
-      </Text>
-    );
-  }
+  const handleAdd = () => {
+    if (!text.trim()) return;
+    onAddTodo(text.trim());
+    setText("");
+    Keyboard.dismiss();
+  };
 
   return (
-    <View style={{ width: "100%", marginTop: 10, paddingHorizontal: 20, alignItems: "center" }}>
+    <View style={styles.formContainer}>
       <TextInput
         value={text}
         onChangeText={setText}
-        placeholder="O que você precisa fazer?"
+        placeholder="O que precisa ser feito?"
+        style={styles.textInput}
       />
-
-    {lists.length === 0 ? (
-      <Text style={{ color: "red", marginTop: 8 }}>
-        Crie uma lista antes de adicionar tarefas
-      </Text>
-    ): (
-      <Picker
-        selectedValue={listId}
-        onValueChange={setListId}
-        style={{ width: "100%", height: 50 }}
-      >
-        {lists.map(list => (
-          <Picker.Item
-            key={list.id}
-            label={list.name}
-            value={list.id}
-          />
-        ))}
-      </Picker>
-  )}
-      <Button
-        title="Adicionar"
-          onPress={() => {
-            if (!listId) return;
-            if (text.trim().length === 0) return;
-            addTodoHandler(text, listId);
-            setText("");
-          }}
-        />
+      <Button title="Adicionar Tarefa" onPress={handleAdd} color="#4CAF50" />
     </View>
+  );
+}
 
+
+function AddListForm({ onAddList }: { onAddList: (name: string) => void }) {
+  const [listName, setListName] = useState("");
+
+  const handleAdd = () => {
+    if (!listName.trim()) return;
+    onAddList(listName.trim());
+    setListName("");
+    Keyboard.dismiss();
+  };
+
+  return (
+    <View style={styles.formContainer}>
+      <TextInput
+        value={listName}
+        onChangeText={setListName}
+        placeholder="Nome da nova lista (ex: Trabalho)"
+        style={styles.textInput}
+      />
+      <Button title="Criar Lista" onPress={handleAdd} color="#2196F3" />
+    </View>
   );
 }
 
@@ -271,11 +258,10 @@ function ListSelector({
 }
 
 
-function TodoReload() {
+function TodoListView() {
 
   const [todos, setTodos] = React.useState<TodoItem[]>([]);
   const [lists, setLists] = useState<TodoList[]>([]);
-  const [listName, setListName] = useState("");
   const [selectedList, setSelectedList] = useState<string | "all">("all");
 
 
@@ -286,14 +272,13 @@ function TodoReload() {
       const allTodos = await getAllTodos(db);
       const allLists = await getAllLists(db);
       setLists(allLists);
-      setSelectedList(allLists[0]?.id ?? "all");
       setTodos(allTodos);
     }
 
     load();
 
   }, [db])
-
+  console.log(selectedList);
   const [filter, setFilter] = React.useState<FilterOptions>(FilterOptions.All);
 
   const reloadTodos = async () => {
@@ -301,10 +286,24 @@ function TodoReload() {
     setTodos(updatedTodos);
   };
 
-  const addTodo = async (text: string, listId: string) => {
-    await createTodo(db, text, listId);
-    await reloadTodos();
-  };
+  useFocusEffect(
+    useCallback(() => {
+      reloadTodos();
+    }, [db])
+  );
+const addTodo = async (text: string) => {
+  if (selectedList === "all") {
+    Alert.alert(
+      "Selecione uma lista",
+      "Para adicionar uma tarefa, escolha uma lista específica."
+    );
+    return;
+  }
+
+  await createTodo(db, text, selectedList);
+  await reloadTodos();
+};
+
 
 
   const addList = async (name: string) => {
@@ -332,28 +331,11 @@ function TodoReload() {
         selectedListId={selectedList}
         onChange={(value) => setSelectedList(value)}
       />
-      <View style={{ width: "100%", paddingHorizontal: 20 }}>
-      <TextInput
-        value={listName}
-        onChangeText={setListName}
-        placeholder="Nome da lista"
-        style={styles.textInput}
-      />
 
-      <Button
-        title="Criar lista"
-        onPress={() => {
-          if (!listName.trim()) return;
-          addList(listName.trim());
-          setListName("");
-        }}
-      />
-    </View>
-      <AddTodoForm 
-        addTodoHandler={addTodo}
-        lists={lists}
-        selectedList={selectedList}
-      />
+      <AddListForm onAddList={addList} />
+      <View style={{ height: 1, backgroundColor: '#eee', width: '90%', marginVertical: 10 }} />
+      <AddTodoForm onAddTodo={addTodo} />
+
       <TodosFilter selectedValue={filter} setFilter={setFilter} />
       <FlatList
         style={styles.list}
@@ -377,7 +359,7 @@ function TodoReload() {
           <ListItem todoItem={item} toggleTodo={toggleTodo} />
         )}
         contentContainerStyle={{
-          paddingBottom: 100,
+          paddingBottom: 100
         }}
       />
     </GestureHandlerRootView>
@@ -389,7 +371,7 @@ export default function Index() {
   return (
     <SafeAreaProvider>
       <SafeAreaView style={{ flex: 1, backgroundColor: "white" }}>
-        <TodoReload />
+        <TodoListView />
         <Footer />
       </SafeAreaView>
     </SafeAreaProvider>
@@ -431,6 +413,12 @@ const styles = StyleSheet.create({
     padding: 10,
     marginTop: 20,
   },
+  formContainer: {
+    width: "100%",
+    paddingHorizontal: 20,
+    marginVertical: 10,
+    alignItems: "center",
+},
 });
 
 const filterStyles = StyleSheet.create({

@@ -114,11 +114,7 @@ export default function TodoDetailsScreen() {
                 title="Salvar"
                 onPress={async () => {
                 await updateTodoDetails(db, id, notes || null, dueDate ? dueDate.toISOString(): null);
-                if (refresh === "true") {
-                    router.replace("/");
-                } else {
-                    router.back();
-                }
+                router.back();
                 }}
             />
         </View>
